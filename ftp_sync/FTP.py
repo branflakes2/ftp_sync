@@ -15,6 +15,27 @@ logger = logging.getLogger(__name__)
 
 FTP_SYNC_HOME = Path(str(os.environ.get('HOME'))) / ".config" / "ftp_sync"
 
+
+class Patcher:
+    def  to_remote(self, file):
+        pass
+    def from_remote(self, file):
+        pass
+
+class DESMumePatcher(Patcher):
+    DESMUME_FOOTER = b'|<--Snip above here to create a raw sav by excluding this DeSmuME savedata footer:\x01\x00\x04\x00\x00\x00\x08\x00\x06\x00\x00\x00\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00|-DESMUME SAVE-|'
+
+    def __init__(self, save_size_kb=512):
+        self.save_size_kb = save_size_kb
+
+    def from_remote(self, file):
+        logger.info("Applying DESMume footer")
+        return file.read() + self.DESMUME_FOOTER
+
+    def to_remote(self, file):
+        logger.info("Removing DESMume footer")
+        return file.read(self.save_size_kb * 1024)
+
 class FTPSync:
 
     LOCAL_TO_REMOTE = 0
@@ -65,10 +86,10 @@ class FTPSync:
         else:
             self.hash_db['local'][path] = digest
 
-    def _get_digest(self, path, remote=False):
+    def _get_digest(self, path, remote=False, patcher=None):
         if remote:
             try:
-                with self.ftp_helper.download_to_tempfile(path) as f:
+                with self.ftp_helper.download_to_tempfile(path, patcher) as f:
                     return hashlib.md5(f.read()).hexdigest()
             except (error_perm, error_temp):
                 return None
@@ -79,12 +100,12 @@ class FTPSync:
             else:
                 return None
 
-    def _get_sync_direction(self, local_path, remote_path, method="hash"):
+    def _get_sync_direction(self, local_path, remote_path, method="hash", patcher=None):
         if method == "hash":
             lp_previous_hash = self._get_previous_digest(local_path, remote=False)
             rp_previous_hash = self._get_previous_digest(remote_path, remote=True)
-            lp_hash = self._get_digest(local_path, remote=False)
-            rp_hash = self._get_digest(remote_path, remote=True)
+            lp_hash = self._get_digest(local_path, remote=False, patcher=patcher)
+            rp_hash = self._get_digest(remote_path, remote=True, patcher=patcher)
             logger.debug(f'local: {lp_previous_hash} -> {lp_hash}    remote: {rp_previous_hash} -> {rp_hash}')
             if rp_hash is None and lp_hash is None:
                 logger.info("Not syncing: neither path exists")
@@ -145,26 +166,26 @@ class FTPSync:
                 else:
                     logger.info("Local path doesn't exist... No using in backing up nothing!")
 
-    def sync_to(self, local_path, remote_path):
+    def sync_to(self, local_path, remote_path, patcher=None):
         digest = self._get_digest(local_path, remote=False)
         self.backup(remote_path, remote=True)
-        self.ftp_helper.upload_file(local_path, remote_path)
+        self.ftp_helper.upload_file(local_path, remote_path, patcher=patcher)
         self._set_previous_digest(local_path, digest, remote=False)
         self._set_previous_digest(remote_path, digest, remote=True)
 
-    def sync_from(self, local_path, remote_path):
+    def sync_from(self, local_path, remote_path, patcher=None):
         self.backup(local_path, remote=False)
-        self.ftp_helper.download_file(remote_path, local_path)
+        self.ftp_helper.download_file(remote_path, local_path, patcher=patcher)
         digest = self._get_digest(local_path, remote=False)
         self._set_previous_digest(local_path, digest, remote=False)
         self._set_previous_digest(remote_path, digest, remote=True)
 
-    def sync(self, local_path, remote_path):
-        sync_direction = self._get_sync_direction(local_path, remote_path)
+    def sync(self, local_path, remote_path, patcher=None):
+        sync_direction = self._get_sync_direction(local_path, remote_path, patcher=patcher)
         if sync_direction == self.LOCAL_TO_REMOTE:
-            self.sync_to(local_path, remote_path)
+            self.sync_to(local_path, remote_path, patcher=patcher)
         elif sync_direction == self.REMOTE_TO_LOCAL:
-            self.sync_from(local_path, remote_path)
+            self.sync_from(local_path, remote_path, patcher=patcher)
 
     def __del__(self):
         if os.path.exists(self.hash_db_path.parent):
@@ -177,20 +198,40 @@ class FTPHelper:
         self.ftp_connection.connect(host=hostname, port=port)
         self.ftp_connection.login(user=user, passwd=password)
 
-    def upload_file(self, local_path, remote_path):
+    def upload_file(self, local_path, remote_path, patcher=None):
         logger.info(f"Uploading {local_path} to {remote_path}")
-        with open(local_path, "rb") as f:
-            self.ftp_connection.storbinary(f"STOR {remote_path}", f)
+        if patcher is not None:
+            with open(local_path, 'rb') as lf:
+                with TemporaryFile() as f:
+                    f.write(patcher.to_remote(lf))
+                    f.seek(0)
+                    self.ftp_connection.storbinary(f"STOR {remote_path}", f)
+        else:
+            with open(local_path, "rb") as f:
+                self.ftp_connection.storbinary(f"STOR {remote_path}", f)
 
-    def download_file(self, remote_path, local_path):
+    def download_file(self, remote_path, local_path, patcher=None):
         logger.info(f"Downloading {remote_path} to {local_path}")
-        with open(local_path, "w+b") as f:
-            self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
+        if patcher is not None:
+            with TemporaryFile() as f:
+                self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
+                f.seek(0)
+                with open(local_path, "w+b") as lf:
+                    lf.write(patcher.from_remote(f))
+        else:
+            with open(local_path, "w+b") as f:
+                self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
 
     @contextlib.contextmanager
-    def download_to_tempfile(self, remote_path):
+    def download_to_tempfile(self, remote_path, patcher=None):
         f = TemporaryFile()
         self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
+        if patcher is not None:
+            logger.debug('Applying patch before taking digest')
+            f.seek(0)
+            data = patcher.from_remote(f)
+            f.seek(0)
+            f.write(data)
         f.seek(0)
         yield f
         f.close()

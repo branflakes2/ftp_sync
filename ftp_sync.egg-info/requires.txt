@@ -1,4 +1,0 @@
-anyconfig
-click
-python-dateutil
-pyaml

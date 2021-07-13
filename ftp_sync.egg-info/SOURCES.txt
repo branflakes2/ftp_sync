@@ -1,9 +1,0 @@
-setup.py
-ftp_sync/FTP.py
-ftp_sync/__init__.py
-ftp_sync/__main__.py
-ftp_sync.egg-info/PKG-INFO
-ftp_sync.egg-info/SOURCES.txt
-ftp_sync.egg-info/dependency_links.txt
-ftp_sync.egg-info/requires.txt
-ftp_sync.egg-info/top_level.txt

@@ -1,0 +1,1 @@
+* * * * * ./.cron/sync_ds.sh .config/ftp_sync/pokemon.yaml > /dev/null 2>&1

@@ -48,6 +48,7 @@ Ex: `python3 -m ftp_sync -c pokemon.yaml sync -n pokemon_pearl` will sync the `p
 ## Future work
 
 - Add directory sync support
+- Sync between multiple sources/servers
 - Define and enforce config file schema
 - Add more patchers
 - Make this README better

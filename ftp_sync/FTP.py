@@ -1,14 +1,19 @@
+import contextlib
 import datetime
 import logging
+import hashlib
+import json
 import os
 
 from contextlib import redirect_stdout
 from dateutil import parser
-from ftplib import FTP, error_perm
+from ftplib import FTP, error_perm, error_temp
 from pathlib import Path
 from tempfile import TemporaryFile
 
 logger = logging.getLogger(__name__)
+
+FTP_SYNC_HOME = Path(str(os.environ.get('HOME'))) / ".config" / "ftp_sync"
 
 class FTPSync:
 
@@ -18,9 +23,20 @@ class FTPSync:
     MIN_SAFE_DRIFT = 600
     DATE_FORMAT = "%m_%d_%Y_%H_%M"
 
-    def __init__(self, ftp_helper, backup_dir=Path(str(os.environ.get('HOME'))) / ".backup"):
+    def __init__(self, ftp_helper, backup_dir=FTP_SYNC_HOME / "backup", hash_db_path=FTP_SYNC_HOME / "hash_db.json"):
+        if not os.path.exists(FTP_SYNC_HOME):
+            os.makedirs(FTP_SYNC_HOME)
+        if not os.path.exists(backup_dir):
+            os.makedirs(backup_dir)
+
         self.ftp_helper = ftp_helper
         self.backup_dir = Path(backup_dir)
+        self.hash_db_path = hash_db_path
+        if not os.path.exists(hash_db_path):
+            self.hash_db = {'local': {}, 'remote': {}}
+        else:
+            with open(hash_db_path) as f:
+                self.hash_db = json.load(f)
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
     
@@ -37,21 +53,79 @@ class FTPSync:
             else:
                 return datetime.datetime.fromtimestamp(0)
 
-    def _get_sync_direction(self, local_path, remote_path):
-        lp_mtime = self.get_last_modified(local_path, remote=False)
-        rp_mtime = self.get_last_modified(remote_path, remote=True)
-        logger.info(f"Local: {str(lp_mtime)}    Remote: {str(rp_mtime)}: {abs((lp_mtime - rp_mtime).seconds)}")
-        if lp_mtime > rp_mtime:
-            delta = lp_mtime - rp_mtime
+    def _get_previous_digest(self, path, remote=False):
+        if remote:
+            return self.hash_db['remote'].get(path)
         else:
-            delta = rp_mtime - lp_mtime
-        if abs(delta.seconds) > self.MIN_SAFE_DRIFT:
-            if lp_mtime > rp_mtime:
-                return self.LOCAL_TO_REMOTE
+            return self.hash_db['local'].get(path)
+
+    def _set_previous_digest(self, path, digest, remote=False):
+        if remote:
+            self.hash_db['remote'][path] = digest
+        else:
+            self.hash_db['local'][path] = digest
+
+    def _get_digest(self, path, remote=False):
+        if remote:
+            try:
+                with self.ftp_helper.download_to_tempfile(path) as f:
+                    return hashlib.md5(f.read()).hexdigest()
+            except (error_perm, error_temp):
+                return None
+        else:
+            if os.path.exists(path):
+                with open(path, 'rb') as f:
+                    return hashlib.md5(f.read()).hexdigest()
             else:
-                return self.REMOTE_TO_LOCAL
+                return None
+
+    def _get_sync_direction(self, local_path, remote_path, method="hash"):
+        if method == "hash":
+            lp_previous_hash = self._get_previous_digest(local_path, remote=False)
+            rp_previous_hash = self._get_previous_digest(remote_path, remote=True)
+            lp_hash = self._get_digest(local_path, remote=False)
+            rp_hash = self._get_digest(remote_path, remote=True)
+            logger.debug(f'local: {lp_previous_hash} -> {lp_hash}    remote: {rp_previous_hash} -> {rp_hash}')
+            if rp_hash is None and lp_hash is None:
+                logger.info("Not syncing: neither path exists")
+                return self.DO_NOT_SYNC
+            elif rp_hash is None and lp_hash is not None:
+                logger.info("Syncing local to remote: remote path does not exist")
+                return self.LOCAL_TO_REMOTE
+            elif rp_hash is not None and lp_hash is None:
+                logger.info("Syncing remote to local: local path does not exist")
+                return self.LOCAL_TO_REMOTE
+            elif lp_previous_hash == rp_previous_hash:
+                if rp_hash != rp_previous_hash and lp_hash == lp_previous_hash:
+                    logger.info("Syncing remote to local: remote file updated")
+                    return self.REMOTE_TO_LOCAL
+                elif rp_hash == rp_previous_hash and lp_hash != lp_previous_hash:
+                    logger.info("Syncing local to remote: local file updated")
+                    return self.LOCAL_TO_REMOTE
+                elif rp_hash == rp_previous_hash and lp_hash == lp_previous_hash:
+                    logger.info("Not syncing: neither path updated")
+                    return self.DO_NOT_SYNC
+                else:
+                    logger.info("Not syncing: both paths updated. Please manually sync with either the sync_to or sync_from command")
+                    return self.DO_NOT_SYNC
+            else:
+                logger.info("Not syncing: previous hashes are different. Please manually sync with either the sync_to or sync_from command")
+                return self.DO_NOT_SYNC
         else:
-            return self.DO_NOT_SYNC
+            lp_mtime = self.get_last_modified(local_path, remote=False)
+            rp_mtime = self.get_last_modified(remote_path, remote=True)
+            logger.info(f"Local: {str(lp_mtime)}    Remote: {str(rp_mtime)}: {abs((lp_mtime - rp_mtime).seconds)}")
+            if lp_mtime > rp_mtime:
+                delta = lp_mtime - rp_mtime
+            else:
+                delta = rp_mtime - lp_mtime
+            if abs(delta.seconds) > self.MIN_SAFE_DRIFT:
+                if lp_mtime > rp_mtime:
+                    return self.LOCAL_TO_REMOTE
+                else:
+                    return self.REMOTE_TO_LOCAL
+            else:
+                return self.DO_NOT_SYNC
 
     def backup(self, path, remote=False):
         backup_filename = (self.get_last_modified(path, remote=remote).strftime(self.DATE_FORMAT) + "___" + datetime.datetime.now().strftime(self.DATE_FORMAT))
@@ -60,7 +134,7 @@ class FTPSync:
         for d in str(path).split('/')[1:]:
             backup_filename += "___" + d
         local_path = self.backup_dir / backup_filename
-        logger.info(f"Backing up {remote=} {path} to {backup_filename}.")
+        logger.info(f"Backing up {remote=} {path} to {backup_filename}")
         if remote:
             self.ftp_helper.download_file(path, local_path)
         else:
@@ -69,22 +143,33 @@ class FTPSync:
                     with open(path, 'rb') as src:
                         dest.write(src.read())
                 else:
-                    logging.info("Local path doesn't exist... No using in backing up nothing!")
+                    logger.info("Local path doesn't exist... No using in backing up nothing!")
+
+    def sync_to(self, local_path, remote_path):
+        digest = self._get_digest(local_path, remote=False)
+        self.backup(remote_path, remote=True)
+        self.ftp_helper.upload_file(local_path, remote_path)
+        self._set_previous_digest(local_path, digest, remote=False)
+        self._set_previous_digest(remote_path, digest, remote=True)
+
+    def sync_from(self, local_path, remote_path):
+        self.backup(local_path, remote=False)
+        self.ftp_helper.download_file(remote_path, local_path)
+        digest = self._get_digest(local_path, remote=False)
+        self._set_previous_digest(local_path, digest, remote=False)
+        self._set_previous_digest(remote_path, digest, remote=True)
 
     def sync(self, local_path, remote_path):
         sync_direction = self._get_sync_direction(local_path, remote_path)
-        if not sync_direction:
-            logger.info(f"Syncing local {local_path} to {remote_path}.")
-        elif sync_direction == 1:
-            logger.info(f"Syncing remote {remote_path} to {local_path}.")
-        else:
-            logger.info(f"Not syncing {local_path} and {remote_path}: time to similar: delta < {self.MIN_SAFE_DRIFT}")
         if sync_direction == self.LOCAL_TO_REMOTE:
-            self.backup(remote_path, remote=True)
-            self.ftp_helper.upload_file(local_path, remote_path)
+            self.sync_to(local_path, remote_path)
         elif sync_direction == self.REMOTE_TO_LOCAL:
-            self.backup(local_path, remote=False)
-            self.ftp_helper.download_file(remote_path, local_path)
+            self.sync_from(local_path, remote_path)
+
+    def __del__(self):
+        if os.path.exists(self.hash_db_path.parent):
+            with open(self.hash_db_path, 'w+') as f:
+                json.dump(self.hash_db, f)
 
 class FTPHelper:
     def __init__(self, hostname, port=21, user="anonymous", password=""):
@@ -93,14 +178,22 @@ class FTPHelper:
         self.ftp_connection.login(user=user, passwd=password)
 
     def upload_file(self, local_path, remote_path):
-        logging.info(f"Uploading {local_path} to {remote_path}.")
+        logger.info(f"Uploading {local_path} to {remote_path}")
         with open(local_path, "rb") as f:
             self.ftp_connection.storbinary(f"STOR {remote_path}", f)
 
     def download_file(self, remote_path, local_path):
-        logging.info(f"Downloading {remote_path} to {local_path}.")
+        logger.info(f"Downloading {remote_path} to {local_path}")
         with open(local_path, "w+b") as f:
             self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
+
+    @contextlib.contextmanager
+    def download_to_tempfile(self, remote_path):
+        f = TemporaryFile()
+        self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
+        f.seek(0)
+        yield f
+        f.close()
 
     def copy_file(self, path, new_path):
         with TemporaryFile() as t:
@@ -133,8 +226,8 @@ class FTPHelper:
                 logger.debug(Path(remote_path))
                 logger.debug(Path(remote_path).parent)
                 self.ftp_connection.cwd(str(Path(remote_path).parent))
-            except error_perm:
-                logging.warning(f"Path {remote_path} does not exist on remote.")
+            except (error_perm, error_temp):
+                logging.warning(f"Path {remote_path} does not exist on remote")
                 return None
             pwd = self.dir()
             logger.debug(pwd)

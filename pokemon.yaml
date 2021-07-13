@@ -1,5 +1,6 @@
 hostname: "192.168.0.11"
 port: 5000
 sync:
-  - local_path: "/home/brian/.config/desmume/1016 - Pokemon Pearl (v05) (U)(Legacy).sav"
+  pokemon_pearl:
+    local_path: "/home/brian/.config/desmume/1016 - Pokemon Pearl (v05) (U)(Legacy).sav"
     remote_path: "/ndsroms/saves/1016 - Pokemon Pearl (v05) (U)(Legacy).sav"

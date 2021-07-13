@@ -1,10 +1,16 @@
 # ftp sync
 
-Sync file pairs over ftp and apply patches to them. Useful for using (ftpd)[https://github.com/mtheall/ftpd) to transfer ROM save files to and from your DS if you also play on an emulator. Setup a cron job to check for your DS's ftp server periodically to setup automatic syncing.
+Sync file pairs over ftp and apply patches to them. Useful for using [ftpd](https://github.com/mtheall/ftpd) to transfer ROM save files to and from your DS if you also play on an emulator. Setup a cron job to check for your DS's ftp server periodically to setup automatic syncing. Untested on windows. It may just work out of the box, unsure though.
+
+## Installation
+
+Clone this repo, cd into it, `pip3 install .`
 
 ## Config file format
 
 Use either yaml or json. An example yaml file is provided with all of the currently supported options.
+
+If the patcher option is not specified, files will be transfered unmodified.
 
 ## Automatic sync behavior
 

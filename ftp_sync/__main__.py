@@ -29,7 +29,7 @@ def _parse_pair_to_kwargs(d):
     return kwargs
 
 @click.group()
-@click.option('-c', '--config-file', type=str, required=True)
+@click.option('-c', '--config-file', type=str, required=True, help="Yaml or json config file defining connection and sync pair settings")
 @click.option('-d', '--debug', is_flag=True)
 @click.pass_context
 def main(ctx, config_file, debug):

@@ -1,6 +1,6 @@
 # ftp sync
 
-Sync file pairs over ftp and apply patches to them. Useful for using (ftpd)[https://github.com/mtheall/ftpd) to transfer ROM save files to and from your DS if you also play on an emulator. Setup a cron job to check for your DS's ftp server periodically to setup automatic syncing.
+Sync file pairs over ftp and apply patches to them. Useful for using (ftpd)[https://github.com/mtheall/ftpd] to transfer ROM save files to and from your DS if you also play on an emulator. Setup a cron job to check for your DS's ftp server periodically to setup automatic syncing.
 
 ## Config file format
 

@@ -10,6 +10,8 @@ Clone this repo, cd into it, `pip3 install .`
 
 Use either yaml or json. An example yaml file is provided with all of the currently supported options.
 
+If the patcher option is not specified, files will be transfered unmodified.
+
 ## Automatic sync behavior
 
 On your first run, you'll likely have to specify one of the to/from commands if both remote and local files exist.

@@ -50,6 +50,7 @@ Ex: `python3 -m ftp_sync -c pokemon.yaml sync -n pokemon_pearl` will sync the `p
 - Windows support
 - Add directory sync support
 - Sync between multiple sources/servers
+- Cleanup old backup files
 - Define and enforce config file schema
 - Add more patchers (Would love to extract/inject saves from/to VC)
 - Make this README better

@@ -2,9 +2,7 @@ hostname: "192.168.0.11"
 port: 5000
 sync:
   pokemon_pearl:
-    local_path: "/home/branflakes/.config/desmume/1016 - Pokemon Pearl (v05) (U)(Legacy).dsv"
+    local_path: "/home/brian/.config/desmume/1016 - Pokemon Pearl (v05) (U)(Legacy).dsv"
     remote_path: "/ndsroms/saves/1016 - Pokemon Pearl (v05) (U)(Legacy).sav"
     patcher:
       name: desmume
-      options:
-        save_size_kb: 512

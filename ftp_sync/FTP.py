@@ -25,16 +25,14 @@ class Patcher:
 class DESMumePatcher(Patcher):
     DESMUME_FOOTER = b'|<--Snip above here to create a raw sav by excluding this DeSmuME savedata footer:\x01\x00\x04\x00\x00\x00\x08\x00\x06\x00\x00\x00\x03\x00\x00\x00\x00\x00\x08\x00\x00\x00\x00\x00|-DESMUME SAVE-|'
 
-    def __init__(self, save_size_kb=512):
-        self.save_size_kb = save_size_kb
-
     def from_remote(self, file):
         logger.info("Applying DESMume footer")
         return file.read() + self.DESMUME_FOOTER
 
     def to_remote(self, file):
         logger.info("Removing DESMume footer")
-        return file.read(self.save_size_kb * 1024)
+        data = file.read()
+        return data[:len(data) - len(self.DESMUME_FOOTER)]
 
 class FTPSync:
 

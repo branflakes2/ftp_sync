@@ -276,17 +276,3 @@ class FTPHelper:
 
     def __del__(self):
         self.ftp_connection.quit()
-
-
-if __name__ == "__main__":
-    helper = FTPHelper("192.168.0.11", 5000)
-    helper.copy_file("/BOOT.NDS", "/copy_test")
-    print(helper.dir())
-    print(helper.last_modified("/BOOT.NDS"))
-    print(helper.last_modified("/copy_test"))
-    sync = FTPSync(helper)
-    print(sync._get_sync_direction("/home/brian/.xsession-errors", "/snemul.cfg"))
-    sync.sync("/home/brian/.xsession-errors", "/snemul.cfg")
-    helper.delete_file("/copy_test")
-    print("*" * 10)
-    helper.dir()

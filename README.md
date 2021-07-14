@@ -46,7 +46,7 @@ Ex: `python3 -m ftp_sync -c pokemon.yaml sync -n pokemon_pearl` will sync the `p
 
 ## Future work
 
-- Windows support
+- ~Windows support~
 - Add directory sync support
 - Sync between multiple sources/servers
 - Cleanup old backup files

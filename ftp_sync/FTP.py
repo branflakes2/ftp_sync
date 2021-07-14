@@ -3,6 +3,7 @@ import datetime
 import logging
 import hashlib
 import json
+import platform
 import os
 
 from contextlib import redirect_stdout
@@ -13,8 +14,11 @@ from tempfile import TemporaryFile
 
 logger = logging.getLogger(__name__)
 
-FTP_SYNC_HOME = Path(str(os.environ.get('HOME'))) / ".config" / "ftp_sync"
-
+if platform.system() == 'Windows':
+    FTP_SYNC_HOME = Path(str(os.environ.get('UserProfile'))) / "Documents" / "ftp_sync"
+else:
+    FTP_SYNC_HOME = Path(str(os.environ.get('HOME'))) / ".config" / "ftp_sync"
+FTP_SYNC_CONFIG_PATH = FTP_SYNC_HOME / "ftp_sync.yaml"
 
 class Patcher:
     def  to_remote(self, file):
@@ -113,7 +117,7 @@ class FTPSync:
                 return self.LOCAL_TO_REMOTE
             elif rp_hash is not None and lp_hash is None:
                 logger.info("Syncing remote to local: local path does not exist")
-                return self.LOCAL_TO_REMOTE
+                return self.REMOTE_TO_LOCAL
             elif lp_previous_hash == rp_previous_hash:
                 if rp_hash != rp_previous_hash and lp_hash == lp_previous_hash:
                     logger.info("Syncing remote to local: remote file updated")
@@ -162,7 +166,7 @@ class FTPSync:
                     with open(path, 'rb') as src:
                         dest.write(src.read())
                 else:
-                    logger.info("Local path doesn't exist... No using in backing up nothing!")
+                    logger.info("Local path doesn't exist... No use in backing up nothing!")
 
     def sync_to(self, local_path, remote_path, patcher=None):
         digest = self._get_digest(local_path, remote=False)

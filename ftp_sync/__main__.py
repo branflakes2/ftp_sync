@@ -1,6 +1,7 @@
 import anyconfig
 import click
 import logging
+import os
 
 from . import FTP
 
@@ -29,16 +30,19 @@ def _parse_pair_to_kwargs(d):
     return kwargs
 
 @click.group()
-@click.option('-c', '--config-file', type=str, required=True, help="Yaml or json config file defining connection and sync pair settings")
+@click.option('-c', '--config-file', type=str, default=FTP.FTP_SYNC_CONFIG_PATH, help="Yaml or json config file defining connection and sync pair settings")
 @click.option('-d', '--debug', is_flag=True)
 @click.pass_context
 def main(ctx, config_file, debug):
     if debug:
-        logging.info("Debug mode on.")
+        logging.debug("Debug messages on.")
         logger.setLevel(logging.DEBUG)
         FTP.logger.setLevel(logging.DEBUG)
         logging.basicConfig(level=logging.DEBUG)
-    ctx.config = anyconfig.load(config_file)
+    if os.path.exists(config_file):
+        ctx.config = anyconfig.load(config_file)
+    else:
+        logger.error(f"Config file does not exist. Create one at {FTP.FTP_SYNC_CONFIG_PATH} or pass one with the -c/--config option. Checkout https://github.com/branflakes2/ftp_sync/blob/master/ftp_sync.yaml for an example.")
 
 @main.command(help="Automatically sync a specified sync pair.")
 @click.option('-n', '--name', type=str, required=True, help="Sync pair name")

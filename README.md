@@ -9,7 +9,7 @@ Clone this repo, cd into it, `pip3 install .`
 ## Config file format
 
 Default config file location:
-- Windows: `Documents\ftp_sync\ftp_sync.yaml'
+- Windows: `Documents\ftp_sync\ftp_sync.yaml`
 - Linux/MacOS: `~/.config/ftp_sync/ftp_sync.yaml`
 
 Use either yaml or json. An example yaml file is provided with all of the currently supported options.

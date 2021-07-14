@@ -46,12 +46,12 @@ Ex: `python3 -m ftp_sync -c pokemon.yaml sync -n pokemon_pearl` will sync the `p
 
 ## Future work
 
-- ~Windows support~
-- Add directory sync support
-- Sync between multiple sources/servers
-- Cleanup old backup files
-- Define and enforce config file schema
-- Add more patchers (Would love to extract/inject saves from/to VC)
-- Make this README better
-- If enough people like this I'll consider adding it to pypi and turning this into a real REPO with CI, unit tests, etc
-- Suggestions?
+- [x] Windows support
+- [ ] Add directory sync support
+- [ ] Sync between multiple sources/servers
+- [ ] Cleanup old backup files
+- [ ] Define and enforce config file schema
+- [ ] Add more patchers (Would love to extract/inject saves from/to VC)
+- [ ] Make this README better
+- [ ] If enough people like this I'll consider adding it to pypi and turning this into a real REPO with CI, unit tests, etc
+- [ ] Suggestions?

@@ -8,6 +8,10 @@ Clone this repo, cd into it, `pip3 install .`
 
 ## Config file format
 
+Default config file location:
+    Windows: `Documents\ftp_sync\ftp_sync.yaml'
+    Linux/MacOS: `~/.config/ftp_sync/ftp_sync.yaml`
+
 Use either yaml or json. An example yaml file is provided with all of the currently supported options.
 
 If the patcher option is not specified, files will be transfered unmodified.
@@ -27,7 +31,7 @@ Usage: python -m ftp_sync [OPTIONS] COMMAND [ARGS]...
 
 Options:
   -c, --config-file TEXT  Yaml or json config file defining connection and 
-                          sync pair settings  [required]
+                          sync pair settings
   -d, --debug
   --help                  Show this message and exit.
 
@@ -42,7 +46,7 @@ Commands:
 
 The singular sync commands (the ones that aren't sync-all\*) take a `-n/--name` argument which specifies the sync pair to use.
 
-Ex: `python3 -m ftp_sync -c pokemon.yaml sync -n pokemon_pearl` will sync the `pokemon_pearl` sync pair in the example yaml file.
+Ex: `python3 -m ftp_sync sync -n pokemon_pearl` will sync the `pokemon_pearl` sync pair in the example yaml file.
 
 ## Future work
 

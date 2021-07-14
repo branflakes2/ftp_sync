@@ -17,9 +17,8 @@ If the patcher option is not specified, files will be transfered unmodified.
 On your first run, you'll likely have to specify one of the to/from commands if both remote and local files exist.
 
 - Will sync if either remote or local file do not exist
-- Will sync if 1 of remote or local files change
+- Will sync if either local or remote files change, not both.
 - Will not sync if both files change
-- Will not sync if somehow the "previous" file hashes do not match
 
 ## Usage
 

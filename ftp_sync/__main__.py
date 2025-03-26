@@ -2,6 +2,7 @@ import anyconfig
 import click
 import logging
 import os
+import re
 
 from . import FTP
 
@@ -10,6 +11,12 @@ logging.basicConfig(level=logging.INFO)
 
 patcher_dict = {
     "desmume": FTP.DESMumePatcher,
+}
+
+selectors = {
+    "suffix": lambda suffix: lambda path: path.endswith(suffix),
+    "prefix": lambda prefix: lambda path: path.startswith(prefix),
+    "regex": lambda regex: lambda path: re.match(regex, path) is not None
 }
 
 def _build_patcher(d):
@@ -26,6 +33,8 @@ def _parse_pair_to_kwargs(d):
     kwargs = {}
     if 'patcher' in d:
         kwargs['patcher'] = _build_patcher(d['patcher'])
+    if 'selector' in d:
+        kwargs['selector'] = selectors[d['selector']['type']](d['selector']['value'])
     kwargs.update(_get_paths(d))
     return kwargs
 

@@ -6,3 +6,9 @@ sync:
     remote_path: "/ndsroms/saves/1016 - Pokemon Pearl (v05) (U)(Legacy).sav"
     patcher:
       name: desmume
+  gba_dir:
+    local_path: "/home/brian/.config/gba"
+    remote_path: "/gba/saves"
+    selector:
+      type: suffix
+      value: sav

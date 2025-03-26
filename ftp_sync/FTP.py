@@ -20,6 +20,7 @@ else:
     FTP_SYNC_HOME = Path(str(os.environ.get('HOME'))) / ".config" / "ftp_sync"
 FTP_SYNC_CONFIG_PATH = FTP_SYNC_HOME / "ftp_sync.yaml"
 
+
 class Patcher:
     def  to_remote(self, file):
         pass
@@ -38,6 +39,16 @@ class DESMumePatcher(Patcher):
         data = file.read()
         return data[:len(data) - len(self.DESMUME_FOOTER)]
 
+class Selector:
+    def __init__(self, value, selector):
+        self.value = value
+        self.selector = selector
+
+    def select(self, paths):
+        for path in paths:
+            if self.selector(str(path)):
+                yield str(path)
+
 class FTPSync:
 
     LOCAL_TO_REMOTE = 0
@@ -46,12 +57,12 @@ class FTPSync:
     MIN_SAFE_DRIFT = 600
     DATE_FORMAT = "%m_%d_%Y_%H_%M"
 
-    def __init__(self, ftp_helper, backup_dir=FTP_SYNC_HOME / "backup", hash_db_path=FTP_SYNC_HOME / "hash_db.json"):
+    def __init__(self, ftp_helper, backup_dir=FTP_SYNC_HOME / "backup", hash_db_path=FTP_SYNC_HOME / "hash_db.json", dry_run=False):
         if not os.path.exists(FTP_SYNC_HOME):
             os.makedirs(FTP_SYNC_HOME)
         if not os.path.exists(backup_dir):
             os.makedirs(backup_dir)
-
+        self.dry_run=dry_run
         self.ftp_helper = ftp_helper
         self.backup_dir = Path(backup_dir)
         self.hash_db_path = hash_db_path
@@ -62,7 +73,29 @@ class FTPSync:
                 self.hash_db = json.load(f)
         if not os.path.exists(self.backup_dir):
             os.makedirs(self.backup_dir)
+
+    def _list_local_dir(self, path):
+        for _, _, files in os.walk(path):
+            for f in files:
+                yield f
+            break
+
+    def _list_remote_dir(self, path):
+        return self.ftp_helper.list_dir(path)
     
+    def list_dir(self, path, selector=None, remote=False):
+        if remote:
+            gen = self._list_remote_dir
+        else:
+            gen = self._list_local_dir
+        for f in gen(path):
+            if selector is not None and selector(f):
+                yield f
+            if selector is None:
+                yield f
+
+        return self._list_local_dir(path)
+
     def get_last_modified(self, path, remote=False):
         if not remote:
             if os.path.exists(path):
@@ -83,6 +116,9 @@ class FTPSync:
             return self.hash_db['local'].get(path)
 
     def _set_previous_digest(self, path, digest, remote=False):
+        logger.info(f"Setting digest of {path} to {digest}, remote: {remote}")
+        if self.dry_run:
+            return
         if remote:
             self.hash_db['remote'][path] = digest
         else:
@@ -168,26 +204,58 @@ class FTPSync:
                 else:
                     logger.info("Local path doesn't exist... No use in backing up nothing!")
 
-    def sync_to(self, local_path, remote_path, patcher=None):
+    def sync_to(self, local_path, remote_path, is_dir=False, selector=None, patcher=None):
+        if is_dir:
+            self._sync_dir_to(local_path, remote_path, selector, patcher)
+        else:
+            self._sync_file_to(local_path, remote_path, patcher)
+
+    def sync_from(self, local_path, remote_path, is_dir=False, selector=None, patcher=None):
+        if is_dir:
+            self._sync_dir_from(local_path, remote_path, selector, patcher)
+        else:
+            self._sync_file_from(local_path, remote_path, patcher)
+
+    def sync(self, local_path, remote_path, is_dir=False, selector=None, patcher=None):
+        if is_dir:
+            self._sync_dir(local_path, remote_path, selector, patcher)
+        else:
+            self._sync_file(local_path, remote_path, patcher)
+
+    def _sync_file_to(self, local_path, remote_path, patcher=None):
         digest = self._get_digest(local_path, remote=False)
         self.backup(remote_path, remote=True)
         self.ftp_helper.upload_file(local_path, remote_path, patcher=patcher)
         self._set_previous_digest(local_path, digest, remote=False)
         self._set_previous_digest(remote_path, digest, remote=True)
 
-    def sync_from(self, local_path, remote_path, patcher=None):
+    def _sync_file_from(self, local_path, remote_path, patcher=None):
         self.backup(local_path, remote=False)
         self.ftp_helper.download_file(remote_path, local_path, patcher=patcher)
         digest = self._get_digest(local_path, remote=False)
         self._set_previous_digest(local_path, digest, remote=False)
         self._set_previous_digest(remote_path, digest, remote=True)
 
-    def sync(self, local_path, remote_path, patcher=None):
+    def _sync_file(self, local_path, remote_path, patcher=None):
         sync_direction = self._get_sync_direction(local_path, remote_path, patcher=patcher)
         if sync_direction == self.LOCAL_TO_REMOTE:
-            self.sync_to(local_path, remote_path, patcher=patcher)
+            self._sync_file_to(local_path, remote_path, patcher=patcher)
         elif sync_direction == self.REMOTE_TO_LOCAL:
-            self.sync_from(local_path, remote_path, patcher=patcher)
+            self._sync_file_from(local_path, remote_path, patcher=patcher)
+
+    def _sync_dir_to(self, local_path, remote_path, selector=None, patcher=None):
+        for p in self.list_dir(local_path, selector, remote=False)
+            self._sync_file_to(Path(local_path) / p, Path(remote_path) / p, patcher=patcher)
+
+    def _sync_dir_from(self, local_path, remote_path, selector=None, patcher=None):
+        for p in self.list_dir(remote_path, selector, remote=True):
+            self._sync_file_from(Path(local_path) / p, Path(remote_path) / p, patcher=patcher)
+
+    def _sync_dir(self, local_path, remote_path, selector=None, patcher=None):
+        for p in self.list_dir(local_path, selector, remote=False):
+            self._sync_file(Path(local_path) / p, Path(remote_path) / p, patcher=patcher)
+        for p in self.list_dir(remote_path, selector, remote=True):
+            self._sync_file(Path(local_path) / p, Path(remote_path) / p, patcher=patcher)
 
     def __del__(self):
         if os.path.exists(self.hash_db_path.parent):
@@ -195,13 +263,16 @@ class FTPSync:
                 json.dump(self.hash_db, f)
 
 class FTPHelper:
-    def __init__(self, hostname, port=21, user="anonymous", password=""):
+    def __init__(self, hostname, port=21, user="anonymous", password="", dry_run=False):
         self.ftp_connection = FTP()
         self.ftp_connection.connect(host=hostname, port=port)
         self.ftp_connection.login(user=user, passwd=password)
+        self.dry_run=dry_run
 
     def upload_file(self, local_path, remote_path, patcher=None):
         logger.info(f"Uploading {local_path} to {remote_path}")
+        if self.dry_run:
+            return
         if patcher is not None:
             with open(local_path, 'rb') as lf:
                 with TemporaryFile() as f:
@@ -214,6 +285,8 @@ class FTPHelper:
 
     def download_file(self, remote_path, local_path, patcher=None):
         logger.info(f"Downloading {remote_path} to {local_path}")
+        if self.dry_run:
+            return
         if patcher is not None:
             with TemporaryFile() as f:
                 self.ftp_connection.retrbinary(f"RETR {remote_path}", f.write)
@@ -238,13 +311,23 @@ class FTPHelper:
         yield f
         f.close()
 
+    def list_dir(self, path):
+        for fname, _ in self.ftp_connection.mlsd(path):
+            yield fname
+
     def copy_file(self, path, new_path):
+        logger.info(f"Copying {path} to {new_path}")
+        if self.dry_run:
+            return
         with TemporaryFile() as t:
             self.ftp_connection.retrbinary(f"RETR {path}", t.write)
             t.seek(0)
             self.ftp_connection.storbinary(f"STOR {new_path}", t)
 
     def delete_file(self, path):
+        logger.info(f"Deleting {path}")
+        if self.dry_run:
+            return
         self.ftp_connection.sendcmd(f"DELE {path}")
 
     def dir(self):
@@ -270,7 +353,7 @@ class FTPHelper:
                 logger.debug(Path(remote_path).parent)
                 self.ftp_connection.cwd(str(Path(remote_path).parent))
             except (error_perm, error_temp):
-                logging.warning(f"Path {remote_path} does not exist on remote")
+                logger.warning(f"Path {remote_path} does not exist on remote")
                 return None
             pwd = self.dir()
             logger.debug(pwd)
